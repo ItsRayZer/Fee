@@ -1,0 +1,1637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>FEES - Ledger & Receipt Manager</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsQR@1.4.0/dist/jsQR.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace']
+      }
+    }
+  }
+}
+</script>
+
+<style>
+:root {
+  --blue: #0a84ff;
+  --purple: #bf5af2;
+  --pink: #ff375f;
+  --green: #30d158;
+  --yellow: #ffd60a;
+  --cyan: #64d2ff;
+  --lime: #d6ff3f;
+  --mut: rgba(255, 255, 255, .55);
+  --line: rgba(255, 255, 255, .09);
+}
+html, body { background: #000; }
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  color: #fff;
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: calc(92px + env(safe-area-inset-bottom));
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(60% 40% at 95% 0%, rgba(191, 90, 242, .22), transparent 70%),
+              radial-gradient(55% 40% at 0% 25%, rgba(10, 132, 255, .18), transparent 70%);
+}
+.card { background: rgba(255, 255, 255, .04); border: 1px solid var(--line); border-radius: 24px; }
+.inp {
+  width: 100%;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 14px;
+  color: #fff;
+  outline: none;
+  transition: .2s;
+}
+.inp:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(10, 132, 255, .25); }
+.inp option { background: #111; color: #fff; padding: 10px 8px; }
+.lbl { display: block; font-size: 12px; font-weight: 600; color: var(--mut); margin-bottom: 6px; }
+.btn { border-radius: 14px; padding: 12px 16px; font-weight: 700; font-size: 13px; transition: .2s; white-space: nowrap; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.btn:active { transform: scale(.97); }
+.b-main { background: #fff; color: #000; }
+.b-ghost { background: rgba(255, 255, 255, .07); border: 1px solid var(--line); color: #fff; }
+.b-lime { background: #d6ff3f; color: #000; }
+.chip { font: 700 10px 'JetBrains Mono', monospace; padding: 3px 9px; border-radius: 999px; border: 1px solid currentColor; }
+nav button { color: rgba(255, 255, 255, .6); }
+nav button.on { background: #fff; color: #000; }
+.fl.on { background: #fff; color: #000; border-color: #fff; }
+.hide { display: none !important; }
+.ticks { background: repeating-linear-gradient(90deg, transparent 0, transparent calc(10% - 2px), #000 calc(10% - 2px), #000 10%); }
+
+#qr, #qrcode-container {
+  width: 112px !important;
+  height: 112px !important;
+  max-width: 112px !important;
+  max-height: 112px !important;
+  background: #ffffff !important;
+  padding: 6px !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,.15) !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  position: relative !important;
+  margin: 0 auto !important;
+}
+#qr canvas, #qrcode-container canvas {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  margin: 0 auto !important;
+  display: block !important;
+}
+#qr img, #qrcode-container img {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  margin: 0 auto !important;
+  display: block !important;
+}
+</style>
+</head>
+<body>
+
+<header class="sticky top-0 z-30 backdrop-blur-xl bg-black/75 border-b border-white/10" style="padding-top:env(safe-area-inset-top)">
+  <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
+    <div class="flex items-center gap-2 min-w-0">
+      <div class="font-black text-xl tracking-tight shrink-0">FEES</div>
+      <span id="role-badge" class="chip text-[9px] uppercase tracking-wider shrink-0" style="color:var(--cyan);border-color:rgba(100,210,255,.3)">STUDENT VIEW</span>
+      <span id="sync-badge" class="chip text-[9px] uppercase tracking-wider shrink-0" style="color:var(--yellow);border-color:rgba(255,214,10,.4)">● CONNECTING</span>
+    </div>
+    
+    <div class="flex items-center gap-2 shrink-0">
+      <select id="plan-select" class="inp !w-auto !py-1.5 text-xs max-w-[110px] sm:max-w-[160px] truncate" onchange="switchPlan(this.value)"></select>
+      <button id="btn-admin-lock" type="button" class="btn b-lime !py-1.5 !px-3 text-xs shrink-0" onclick="toggleAdminLock()">🔑 Admin</button>
+    </div>
+  </div>
+</header>
+
+<div id="admin-toolbar" class="admin-only hide bg-lime-400/10 border-b border-lime-400/20 backdrop-blur-md py-2 px-4 sticky top-14 z-20">
+  <div class="max-w-5xl mx-auto flex items-center justify-between gap-2 text-xs font-semibold overflow-x-auto">
+    <span class="text-lime-300 font-mono text-[10px] sm:text-xs flex items-center gap-1.5 shrink-0">
+      <span class="w-2 h-2 rounded-full bg-lime-400 animate-pulse"></span> ADMIN PANEL
+    </span>
+    <div class="flex items-center gap-1.5 shrink-0">
+      <button type="button" class="btn b-lime !py-1 !px-2.5 text-xs font-bold" onclick="showModal('sm')">+ Student</button>
+      <button type="button" class="btn b-lime !py-1 !px-2.5 text-xs font-bold" onclick="showModal('pm')">+ Plan</button>
+      <button type="button" class="btn b-ghost !py-1 !px-2.5 text-xs border-white/20" onclick="exportCSV()">📥 CSV</button>
+    </div>
+  </div>
+</div>
+
+<main class="max-w-5xl mx-auto px-4 py-5 space-y-5">
+  <section class="rounded-[28px] p-5 border border-white/10 overflow-hidden relative" style="background:radial-gradient(110% 80% at 90% -20%,rgba(191,90,242,.5),transparent 60%),radial-gradient(90% 70% at 0% 110%,rgba(10,132,255,.45),transparent 60%),radial-gradient(70% 60% at 100% 110%,rgba(255,55,95,.3),transparent 60%),#000">
+    <div class="flex justify-between items-start">
+      <div>
+        <div class="text-xs font-semibold" style="color:var(--mut)">Active Plan Ledger</div>
+        <h1 id="hero-title" class="text-2xl sm:text-4xl font-black uppercase leading-none tracking-tight mt-1"></h1>
+      </div>
+      <div class="text-[10px] font-mono font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5 shrink-0">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> <span>LOCAL STORAGE</span>
+      </div>
+    </div>
+
+    <div class="flex items-end justify-between mt-6">
+      <div>
+        <div class="text-xs font-semibold" style="color:var(--mut)">Total Collected</div>
+        <div id="hero-collected" class="text-4xl sm:text-5xl font-black tracking-tighter leading-none mt-1">₹0</div>
+      </div>
+      <div id="hero-remaining" class="text-right text-xs sm:text-sm font-bold" style="color:var(--pink)">₹0 to collect</div>
+    </div>
+
+    <div class="relative h-3 rounded-full overflow-hidden mt-4" style="background:rgba(255,255,255,.12)">
+      <div id="hero-bar" class="h-3 rounded-full" style="width:0%;background:linear-gradient(90deg,#0a84ff,#bf5af2,#ff375f);transition:width .6s"></div>
+      <div class="absolute inset-0 ticks"></div>
+    </div>
+    
+    <div class="flex justify-between text-xs font-semibold mt-2" style="color:var(--mut)">
+      <span id="hero-cleared-count">0 cleared</span>
+      <span id="hero-breakdown-count">0 partial, 0 unpaid</span>
+    </div>
+  </section>
+
+  <section id="v-students" class="space-y-3">
+    <div class="flex flex-wrap gap-2 items-center justify-between">
+      <div class="flex gap-2 overflow-x-auto pb-1">
+        <button type="button" class="chip fl on" onclick="filterRoster('ALL',this)">All</button>
+        <button type="button" class="chip fl" onclick="filterRoster('PAID',this)">Paid</button>
+        <button type="button" class="chip fl" onclick="filterRoster('PARTIAL',this)">Partial</button>
+        <button type="button" class="chip fl" onclick="filterRoster('UNPAID',this)">Unpaid</button>
+      </div>
+      <div class="flex items-center gap-2 w-full sm:w-auto">
+        <input id="roster-search" class="inp !w-full sm:!w-64" placeholder="Search student name or roll no..." oninput="renderRosterGrid()">
+      </div>
+    </div>
+
+    <div id="roster-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+  </section>
+
+  <section id="v-ledger" class="hide space-y-3 max-w-2xl mx-auto w-full">
+    <input id="ledger-search" class="inp" placeholder="Search receipts by name, roll no or REC ID" oninput="renderLedger()">
+    <div id="ledger-list" class="space-y-2"></div>
+  </section>
+
+  <section id="v-collect" class="hide card p-5 max-w-xl mx-auto w-full">
+    <div class="flex justify-between items-center mb-4">
+      <div>
+        <h2 class="font-extrabold text-lg">New Receipt Invoice</h2>
+        <p class="text-xs" style="color:var(--mut)">Select student and fill collected cash or UPI amounts.</p>
+      </div>
+      <span id="next-rec-id" class="chip" style="color:var(--cyan)">REC-1001</span>
+    </div>
+
+    <form onsubmit="handleFormPreview(event)" class="space-y-4">
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <label class="lbl !mb-0" for="student-search-input">Student</label>
+          <label class="lbl !mb-0 cursor-pointer flex items-center gap-1.5"><input type="checkbox" id="chk-show-cleared" onchange="renderStudentDropdownList()"> Show cleared</label>
+        </div>
+        <div id="selected-student-card" class="hide"></div>
+        <input id="student-search-input" class="inp mb-2" placeholder="Search by student name or roll number" oninput="renderStudentDropdownList()" autocomplete="off">
+        <div id="student-dropdown-list" class="overflow-y-auto" style="position:relative;max-height:220px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.03)"></div>
+      </div>
+
+      <div id="student-history-info" class="hide rounded-2xl p-3 text-xs font-semibold" style="background:rgba(10,132,255,.12);color:var(--cyan)"></div>
+
+      <div>
+        <label class="lbl" for="inp-phone">WhatsApp Number (Optional)</label>
+        <input id="inp-phone" type="tel" inputmode="numeric" class="inp font-mono" placeholder="10-digit mobile number">
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="lbl" for="inp-cash">Cash (₹)</label><input id="inp-cash" type="number" min="0" value="0" class="inp font-mono" oninput="updatePaymentPreview()"></div>
+        <div><label class="lbl" for="inp-upi">UPI (₹)</label><input id="inp-upi" type="number" min="0" value="0" class="inp font-mono" oninput="updatePaymentPreview()"></div>
+      </div>
+
+      <div class="flex gap-2">
+        <button type="button" class="btn b-ghost flex-1 text-xs !py-2.5" onclick="quickFillPayment('cash')">Full Due in Cash</button>
+        <button type="button" class="btn b-ghost flex-1 text-xs !py-2.5" onclick="quickFillPayment('upi')">Full Due by UPI</button>
+      </div>
+
+      <div>
+        <label class="lbl" for="inp-ref">UPI Reference / Transaction ID (Optional)</label>
+        <input id="inp-ref" class="inp font-mono" placeholder="e.g. 40219823019">
+      </div>
+
+      <div id="payment-preview-box" class="rounded-2xl p-4 text-sm" style="background:rgba(255,255,255,.05);border:1px solid var(--line)"></div>
+
+      <button type="submit" class="btn b-main w-full !py-4 text-sm font-bold active:scale-95 transition-transform">Preview & Issue Receipt</button>
+    </form>
+  </section>
+</main>
+
+<!-- FLOATING CIRCULAR SCAN QR BUTTON (BOTTOM RIGHT) -->
+<button type="button" onclick="openScanQR()" aria-label="Scan QR Code" class="fixed right-4 z-40 w-14 h-14 rounded-full bg-white text-black shadow-[0_8px_25px_rgba(255,255,255,0.25)] flex flex-col items-center justify-center border border-black/10 active:scale-90 transition-transform" style="bottom:calc(82px + env(safe-area-inset-bottom))">
+  <svg class="w-6 h-6 text-black" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M3 7V5a2 2 0 012-2h2m12 0h2a2 2 0 012 2v2m0 10v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M12 9v6m-3-3h6" />
+  </svg>
+</button>
+
+<nav class="fixed bottom-0 inset-x-0 z-30 flex justify-center px-4" style="padding-bottom:calc(12px + env(safe-area-inset-bottom))">
+  <div class="flex gap-1 p-1 rounded-full bg-black/80 backdrop-blur-xl border border-white/10 w-full max-w-sm">
+    <button data-t="students" class="btn flex-1 !rounded-full !py-2.5 on" onclick="switchTab('students')">Students</button>
+    <button data-t="ledger" class="btn flex-1 !rounded-full !py-2.5" onclick="switchTab('ledger')">Ledger</button>
+    <button id="nav-btn-collect" data-t="collect" class="btn flex-1 !rounded-full !py-2.5 admin-only hide" onclick="switchTab('collect')">Collect</button>
+  </div>
+</nav>
+
+<div id="rm" class="hide fixed inset-0 z-50 bg-black/90 backdrop-blur-xl overflow-y-auto p-4">
+  <div class="max-w-md mx-auto my-4 space-y-3">
+    
+    <div id="preview-mode-banner" class="hide text-center text-xs font-bold py-2.5 px-4 rounded-full" style="background:rgba(255,214,10,.15);color:var(--yellow);border:1px solid rgba(255,214,10,.3)">
+      ⚡ Preview Mode • Enter PIN to confirm issue.
+    </div>
+
+    <!-- AMOLED TICKET PASS CARD -->
+    <div id="printable-receipt-card" class="relative rounded-[32px] overflow-hidden font-sans text-white shadow-2xl" style="background:#000">
+      <div class="relative overflow-hidden" style="background:radial-gradient(120% 70% at 85% -10%,rgba(191,90,242,.65) 0%,rgba(191,90,242,0) 60%),radial-gradient(100% 70% at 0% 30%,rgba(10,132,255,.55) 0%,rgba(10,132,255,0) 60%),radial-gradient(90% 60% at 60% 110%,rgba(255,55,95,.45) 0%,rgba(255,55,95,0) 60%),#000">
+        
+        <div class="absolute inset-0 overflow-hidden pointer-events-none select-none">
+          <div style="transform:rotate(-14deg) scale(1.3);margin-top:-40px">
+            <div class="font-black whitespace-nowrap leading-none" style="font-size:54px;color:rgba(255,255,255,.06);letter-spacing:-2px">
+              <div style="margin-left:-30px">FEES FEES FEES FEES</div>
+              <div style="margin-left:-110px">FEES FEES FEES FEES</div>
+              <div style="margin-left:-10px">FEES FEES FEES FEES</div>
+              <div style="margin-left:-90px">FEES FEES FEES FEES</div>
+              <div style="margin-left:-40px">FEES FEES FEES FEES</div>
+              <div style="margin-left:-120px">FEES FEES FEES FEES</div>
+              <div style="margin-left:-20px">FEES FEES FEES FEES</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="relative" style="background:#d6ff3f;color:#000">
+          <div class="font-mono font-black text-[10px] tracking-[0.25em] whitespace-nowrap overflow-hidden py-1.5 px-3">
+            FEE RECEIPT + FEE RECEIPT + FEE RECEIPT + FEE RECEIPT + FEE RECEIPT
+          </div>
+        </div>
+
+        <div class="relative p-6 pb-7 space-y-5">
+          <div class="flex items-center justify-between">
+            <span class="font-mono text-[10px] font-bold tracking-widest px-3 py-1 rounded-full" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18)">FEES / RECEIPT</span>
+            <span id="mI" class="font-mono text-[11px] font-bold px-3 py-1 rounded-full" style="background:#fff;color:#000">REC-1001</span>
+          </div>
+          <div>
+            <div class="font-mono text-[10px] tracking-[0.2em] uppercase" style="color:rgba(255,255,255,.55)">fee plan</div>
+            <div id="mP" class="font-black uppercase leading-[0.95] tracking-tight mt-1" style="font-size:36px">EXAM FEE 2026</div>
+          </div>
+          <div class="flex items-end justify-between gap-3">
+            <div>
+              <div class="font-mono text-[10px] tracking-[0.2em] uppercase" style="color:rgba(255,255,255,.55)">you paid</div>
+              <div id="mT" class="font-black tracking-tighter leading-none mt-1" style="font-size:48px">₹0</div>
+            </div>
+            <span id="mB" class="font-mono font-black text-[10px] px-3 py-1.5 rounded-full whitespace-nowrap" style="color:#000;transform:rotate(-6deg);background:#30d158">PAID IN FULL</span>
+          </div>
+          <div>
+            <div class="flex justify-between font-mono text-[10px] mb-1.5" style="color:rgba(255,255,255,.6)"><span>progress</span><span id="mG">₹0 / ₹0</span></div>
+            <div class="relative h-3 rounded-full overflow-hidden" style="background:rgba(255,255,255,.12)">
+              <div id="mBar" class="h-3 rounded-full" style="width:100%;background:linear-gradient(90deg,#0a84ff,#bf5af2,#ff375f)"></div>
+              <div class="absolute inset-0 ticks"></div>
+            </div>
+          </div>
+          <div class="flex items-end justify-between gap-3 pt-1">
+            <div class="min-w-0">
+              <div class="font-mono text-[10px] tracking-[0.2em] uppercase" style="color:rgba(255,255,255,.55)">received from</div>
+              <div id="mN" class="font-extrabold text-xl leading-tight uppercase mt-0.5 truncate">STUDENT NAME</div>
+            </div>
+            <span id="mS" class="font-mono font-bold text-xs px-3 py-1 rounded-full shrink-0" style="border:1px solid rgba(255,255,255,.35)">SL #00</span>
+          </div>
+          <div id="mD" class="font-mono text-[10px]" style="color:rgba(255,255,255,.5)"></div>
+        </div>
+      </div>
+
+      <div class="relative" style="height:0;background:#f5f5f7">
+        <div class="absolute" style="left:-14px;top:-14px;width:28px;height:28px;border-radius:50%;background:#000"></div>
+        <div class="absolute" style="right:-14px;top:-14px;width:28px;height:28px;border-radius:50%;background:#000"></div>
+      </div>
+
+      <div class="relative p-6 pt-7 space-y-4" style="background:#f5f5f7;color:#1d1d1f">
+        <div class="absolute left-7 right-7 top-0" style="border-top:2px dashed #c7c7cc"></div>
+        <div class="flex items-center justify-between gap-4">
+          <div class="space-y-3 min-w-0 flex-1">
+            <div><div class="font-mono text-[9px] font-bold tracking-[0.2em] uppercase" style="color:#8e8e93">cash</div><div id="mC" class="font-black text-lg leading-tight">₹0</div></div>
+            <div><div class="font-mono text-[9px] font-bold tracking-[0.2em] uppercase" style="color:#8e8e93">upi</div><div id="mU" class="font-black text-lg leading-tight">₹0</div></div>
+            <div><div class="font-mono text-[9px] font-bold tracking-[0.2em] uppercase" style="color:#8e8e93">verify code</div><div id="mK" class="font-mono font-bold text-[11px] break-all" style="color:#5e5ce6">SEC-00000000</div></div>
+          </div>
+          <div class="shrink-0 text-center">
+            <div id="qr"></div>
+            <div class="font-mono text-[8px] font-bold tracking-[0.2em] mt-1.5" style="color:#8e8e93">SCAN TO VERIFY</div>
+          </div>
+        </div>
+
+        <div id="inst" class="hide rounded-2xl p-3 space-y-1 font-mono text-[10px]" style="background:#fff;border:1px solid #e5e5ea">
+          <div class="flex justify-between"><span>installment</span><b id="iI">#1</b></div>
+          <div class="flex justify-between"><span>paid before</span><span id="iP">₹0</span></div>
+          <div class="flex justify-between font-bold pt-1" style="border-top:1px solid #e5e5ea"><span>total paid</span><span id="iC">₹0</span></div>
+        </div>
+
+        <div style="height:24px;border-radius:4px;background:repeating-linear-gradient(90deg,#1d1d1f 0 2px,transparent 2px 4px,#1d1d1f 4px 5px,transparent 5px 9px,#1d1d1f 9px 12px,transparent 12px 14px);opacity:.85"></div>
+        <div class="flex justify-between font-mono text-[9px]" style="color:#8e8e93">
+          <span>wa: <b id="mPh" style="color:#1d1d1f">N/A</b></span>
+          <span id="mO">issued by Class Rep (Aben)</span>
+        </div>
+        <div class="text-center font-black text-[11px] tracking-[0.3em]" style="color:#c7c7cc">KEEP THIS. IT'S YOUR PROOF.</div>
+      </div>
+    </div>
+
+    <!-- MODAL ACTIONS -->
+    <div id="actPrev" class="hide grid grid-cols-2 gap-2">
+      <button type="button" class="btn b-ghost" onclick="cancelPreview()">Edit Details</button>
+      <button type="button" class="btn b-main" onclick="requestPinToConfirmIssue()">Confirm & Issue</button>
+    </div>
+    <div id="actDone" class="grid grid-cols-2 gap-2">
+      <button type="button" class="btn text-xs !py-3" style="background:#30d158;color:#000" onclick="shareWhatsApp()">Send on WhatsApp</button>
+      <button type="button" class="btn b-main text-xs !py-3" onclick="savePNGReceipt()">Save Image</button>
+      <button type="button" class="btn b-ghost text-xs !py-3" onclick="window.print()">Print Slip</button>
+      <button type="button" class="btn b-ghost text-xs !py-3" onclick="hideModal('rm')">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="vm" class="hide fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 overflow-y-auto" onclick="if(event.target===this)closeVerifyModal()">
+  <div class="card p-5 w-full max-w-sm space-y-4 my-auto" style="background:#0c0c10">
+    <div class="flex justify-between items-center">
+      <h2 class="font-extrabold text-lg flex items-center gap-2"><span>Verify Receipt</span></h2>
+      <button type="button" class="text-xs font-bold text-white/60 hover:text-white p-2 -mr-2 cursor-pointer" onclick="closeVerifyModal()">✕ Close</button>
+    </div>
+    <p class="text-xs" style="color:var(--mut)">Scan camera QR code, upload photo, or paste receipt data to verify authenticity.</p>
+
+    <div id="qr-reader" class="overflow-hidden rounded-2xl border border-white/10 hidden bg-black text-white"></div>
+
+    <div class="flex gap-2">
+      <button id="btn-cam" type="button" class="btn b-ghost text-xs flex-1 flex items-center justify-center gap-1.5" onclick="toggleCamScanner()">Camera Scan</button>
+      <label class="btn b-ghost text-xs flex-1 flex items-center justify-center gap-1.5 cursor-pointer">
+        Upload QR
+        <input type="file" accept="image/*" class="hidden" onchange="scanQRFile(this)">
+      </label>
+    </div>
+
+    <div>
+      <input id="vk" class="inp font-mono" placeholder="Paste full QR text or REC ID..." oninput="lookupVerification()">
+    </div>
+    <div id="vr" class="p-4 rounded-2xl text-xs space-y-2 hidden" style="background:rgba(255,255,255,.05);border:1px solid var(--line)"></div>
+  </div>
+</div>
+
+<div id="am" class="hide fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4">
+  <div class="card p-5 w-full max-w-sm space-y-4" style="background:#0c0c10">
+    <div class="flex justify-between items-center">
+      <h2 class="font-extrabold text-lg">Admin Access Verification</h2>
+      <button type="button" class="text-xs font-bold text-white/60 hover:text-white p-2 -mr-2 cursor-pointer" onclick="hideModal('am')">✕ Close</button>
+    </div>
+    
+    <div id="lockout-warning-box" class="hide p-3 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-semibold leading-relaxed"></div>
+
+    <p class="text-xs" style="color:var(--mut)">Solve the security verification and enter Admin PIN to proceed.</p>
+    
+    <div class="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+      <div class="flex justify-between items-center text-xs">
+        <span class="font-semibold" style="color:var(--cyan)">Human Verification Check</span>
+        <button type="button" class="text-[10px] text-white/50 hover:text-white underline" onclick="refreshCaptcha()">Refresh Math</button>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="captcha-question" class="font-mono text-base font-bold bg-white/10 px-3 py-1.5 rounded-lg shrink-0">? + ?</span>
+        <input id="captchaInp" type="number" inputmode="numeric" class="inp font-mono text-center text-base" placeholder="Result">
+      </div>
+    </div>
+
+    <div>
+      <label class="lbl" for="pinInp">Admin Security PIN</label>
+      <input id="pinInp" type="password" inputmode="numeric" class="inp font-mono text-center text-xl tracking-widest" placeholder="••••••" maxlength="8">
+      <div id="attempt-countdown-text" class="text-[11px] mt-1.5 font-mono text-right" style="color:var(--mut)"></div>
+    </div>
+
+    <div class="flex gap-2">
+      <button type="button" class="btn b-ghost flex-1" onclick="hideModal('am')">Cancel</button>
+      <button id="btn-submit-pin" type="button" class="btn b-main flex-1" onclick="submitAdminPin()">Unlock Access</button>
+    </div>
+  </div>
+</div>
+
+<div id="sm" class="hide fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4">
+  <form onsubmit="addNewStudent(event)" class="card p-5 w-full max-w-sm space-y-4" style="background:#0c0c10">
+    <h2 class="font-extrabold text-lg">Add New Student</h2>
+    <div><label class="lbl" for="sn">Full Student Name</label><input id="sn" class="inp" placeholder="John Doe" required></div>
+    <div><label class="lbl" for="sl-num">Roll Number / SL Number</label><input id="sl-num" type="number" min="1" max="999" class="inp font-mono" placeholder="63" required></div>
+    <div class="flex gap-2"><button type="button" class="btn b-ghost flex-1" onclick="hideModal('sm')">Cancel</button><button type="submit" class="btn b-main flex-1">Save Student</button></div>
+  </form>
+</div>
+
+<div id="pm" class="hide fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4">
+  <form onsubmit="createNewPlan(event)" class="card p-5 w-full max-w-sm space-y-4" style="background:#0c0c10">
+    <h2 class="font-extrabold text-lg">Create New Fee Plan</h2>
+    <div><label class="lbl" for="pt">Plan Title</label><input id="pt" class="inp" placeholder="CLASS TRIP 2026" required></div>
+    <div><label class="lbl" for="pa">Amount per Student (₹)</label><input id="pa" type="number" min="1" class="inp font-mono" value="1440" required></div>
+    <div><label class="lbl" for="po">Collected By</label><input id="po" class="inp" value="Class Rep (Aben)"></div>
+    <div class="flex gap-2"><button type="button" class="btn b-ghost flex-1" onclick="hideModal('pm')">Cancel</button><button type="submit" class="btn b-main flex-1">Create Plan</button></div>
+  </form>
+</div>
+
+<div id="toast" class="fixed left-1/2 -translate-x-1/2 z-[60] px-4 py-3 rounded-2xl text-xs font-bold opacity-0 pointer-events-none transition-opacity" style="bottom:calc(96px + env(safe-area-inset-bottom))"></div>
+
+<script>
+const $ = i => document.getElementById(i);
+const inr = n => '₹' + Number(n || 0).toLocaleString('en-IN');
+const pad = n => String(n).padStart(2, '0');
+const esc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ld = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch(e) { return d; } };
+const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) { toast('Storage full or restricted', 1); } };
+
+const SECRET_ADMIN_PIN = "203108";
+
+const DEFAULT_ROSTER = `1 AAVANY SUNIL
+2 ABEN SOJAN
+3 ABHIJITH SHIJU
+4 ABHINAV KRISHNA S
+5 ABHINAV MATHEW
+6 ABHIRAM V NAIR
+7 ABHISHEK G NAIR
+8 ABHISHEK RAJENDRAN
+9 ABHISHEKH A K
+11 ABY BIJO
+12 ACHSAH BABU
+13 ADARSH R NAIR
+14 ADHIL KABEER
+15 ADITHYAN P J
+16 AISWARYA RAJESH
+18 AKASHKRISHNA K P
+19 AKSHAY K JOJO
+20 AKSHAYA P SARAN
+21 ALAN CYRIL
+22 ALAN LAL
+23 ALAN SOJAN
+24 ALBIN BIJU
+25 ALBIN SUNNY
+26 ALDRIN MATHEWS
+27 ALEENA MANOJ
+28 ALEN CHACKO
+29 ALMINA P ABEES
+30 ALVIN FRANCIS
+31 AMRUTHA BIJU
+32 AMRUTHA C A
+33 ANAMIKA ABHILASH
+35 ANANDU S
+36 ANANYA ANIL
+37 ANASOOYA SILIJU
+39 ANN MARIA SUNIL
+40 ANUSHMA SURESH
+41 ARAVIND RAJESH
+42 ARJUN BINU
+43 ARJUN K S
+44 ARJUN P KRISHNA
+45 ARYA SHIBU
+46 ASHIKA SHAJI
+47 ASHIN RAJ
+48 ASWAJITH V
+49 ASWAN HARIKUMAR
+50 ASWIN PRAMOD
+51 ASWIN SHIBU
+52 ATHUL PRAKASH
+53 ATHULYA ANIL
+54 AUSTINE GEORGE
+55 AYUSH MON B
+56 BAISAL BINU GEORGE
+57 BENNET PAUL BENOY
+58 BERNNA MATHEW
+59 BIJESH BIJU
+60 BINEESH BIJU
+61 BLESSAL M REJI
+62 CHAITHRA SINU`.split('\n').map(l => {
+  const i = l.indexOf(' ');
+  return { sl: +l.slice(0, i), name: l.slice(i + 1) };
+});
+
+let R = ld('fees_app_students_custom', DEFAULT_ROSTER);
+let isAdmin = ld('fees_app_is_admin', false);
+let plans = ld('fees_app_plans', [{ id: 'plan_exam_2026', code: 'EXAM_2026', title: 'EXAM FEE 2026', target: 1440, officer: 'Class Rep (Aben)' }]);
+let activeId = localStorage.getItem('fees_app_active_plan') || plans[0].id;
+let receipts = ld('fees_app_receipts_db', []);
+let phones = ld('fees_app_phones', {});
+let counter = parseInt(localStorage.getItem('fees_app_counter') || '1001');
+
+let curReceiptId = null;
+let preparedBlob = null;
+let selectedSl = 0;
+let draftReceipt = null;
+let rosterFilter = 'ALL';
+let camStream = null;
+let pendingPinCallback = null;
+let captchaSolution = 0;
+
+const activePlan = () => plans.find(p => p.id === activeId) || plans[0];
+const numId = r => +String(r.id || '').replace(/\D/g, '') || 0;
+const validReceiptsForStudent = sl => receipts.filter(r => r.planId === activePlan().id && r.sl === sl && r.status === 'VALID');
+const paidTotalForStudent = sl => validReceiptsForStudent(sl).reduce((acc, r) => acc + r.total, 0);
+
+function calcReceiptInstallment(r) {
+  const prior = receipts.filter(x => x.planId === r.planId && x.sl === r.sl && x.status === 'VALID' && numId(x) < numId(r));
+  const prev = prior.reduce((acc, x) => acc + x.total, 0);
+  const cum = prev + r.total;
+  const diff = cum - r.planTarget;
+  return { prev, cum, inst: prior.length + 1, due: diff < 0 ? -diff : 0, extra: diff > 0 ? diff : 0 };
+}
+
+function getReceiptStatus(r) {
+  if (r.status === 'VOID') return 'VOID';
+  const c = calcReceiptInstallment(r);
+  return c.due ? 'PARTIAL' : c.extra ? 'EXTRA' : 'FULL';
+}
+
+const COLOR_MAP = { FULL: 'var(--green)', PARTIAL: 'var(--yellow)', EXTRA: 'var(--cyan)', VOID: 'var(--pink)', PAID: 'var(--green)', UNPAID: 'var(--pink)' };
+
+
+/* ============ FIREBASE LIVE SYNC ============ */
+const firebaseConfig = {
+  apiKey: "AIzaSyCBbLyWXiOoNFlCxuozJpSJENRg08iPui8",
+  authDomain: "mac-fee.firebaseapp.com",
+  databaseURL: "https://mac-fee-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "mac-fee",
+  storageBucket: "mac-fee.firebasestorage.app",
+  messagingSenderId: "995407083773",
+  appId: "1:995407083773:web:ec370bbcb263c5e5a5e694"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const F = db.ref('fees');
+let online = false;
+const loaded = { students: false, plans: false, receipts: false, phones: false, counter: false };
+const allLoaded = () => Object.values(loaded).every(Boolean);
+
+let paintQ = 0;
+function schedulePaint() {
+  cancelAnimationFrame(paintQ);
+  paintQ = requestAnimationFrame(() => {
+    window.paintApp();
+    if ($('vk') && $('vk').value) lookupVerification();
+  });
+}
+
+function setSync() {
+  const b = $('sync-badge');
+  if (!b) return;
+  if (online && allLoaded()) { b.textContent = '● LIVE'; b.style.color = 'var(--green)'; b.style.borderColor = 'rgba(48,209,88,.4)'; }
+  else if (online) { b.textContent = '● SYNCING'; b.style.color = 'var(--yellow)'; b.style.borderColor = 'rgba(255,214,10,.4)'; }
+  else { b.textContent = '● OFFLINE'; b.style.color = 'var(--pink)'; b.style.borderColor = 'rgba(255,55,95,.4)'; }
+}
+db.ref('.info/connected').on('value', s => { online = !!s.val(); setSync(); });
+
+function markLoaded(k) { loaded[k] = true; setSync(); }
+
+// Students (keyed "s<sl>" so Firebase never turns them into a sparse array)
+F.child('students').on('value', snap => {
+  const v = snap.val();
+  if (v == null) {
+    const seed = {}; R.forEach(x => seed['s' + x.sl] = { sl: x.sl, name: x.name });
+    F.child('students').set(seed);
+  } else {
+    R = Object.values(v).filter(Boolean).sort((a, b) => a.sl - b.sl);
+    sv('fees_app_students_custom', R);
+  }
+  markLoaded('students'); schedulePaint();
+});
+
+// Plans
+F.child('plans').on('value', snap => {
+  const v = snap.val();
+  if (v == null) {
+    const seed = {}; plans.forEach(p => seed[p.id] = p);
+    F.child('plans').set(seed);
+  } else {
+    plans = Object.values(v).filter(Boolean);
+    sv('fees_app_plans', plans);
+    if (!plans.some(p => p.id === activeId)) activeId = plans[0].id;
+  }
+  markLoaded('plans'); schedulePaint();
+});
+
+// Receipts (keyed by receipt id). First run: upload anything saved on this device.
+F.child('receipts').on('value', snap => {
+  const v = snap.val();
+  if (v == null) {
+    const local = ld('fees_app_receipts_db', []);
+    if (local.length) {
+      const up = {}; local.forEach(r => up[r.id] = r);
+      F.child('receipts').update(up);
+    }
+    receipts = [];
+  } else {
+    receipts = Object.values(v).filter(Boolean).sort((a, b) => numId(b) - numId(a));
+    sv('fees_app_receipts_db', receipts);
+  }
+  syncCounterFloor();
+  markLoaded('receipts'); schedulePaint();
+});
+
+// Phones
+F.child('phones').on('value', snap => {
+  const v = snap.val();
+  if (v == null) {
+    const up = {}; Object.keys(phones).forEach(k => up['p' + k] = phones[k]);
+    if (Object.keys(up).length) F.child('phones').update(up);
+  } else {
+    phones = {};
+    Object.keys(v).forEach(k => phones[k.slice(1)] = v[k]);
+    sv('fees_app_phones', phones);
+  }
+  markLoaded('phones'); schedulePaint();
+});
+
+// Receipt counter
+F.child('counter').on('value', snap => {
+  const v = snap.val();
+  if (v == null) F.child('counter').set(Math.max(counter, 1001));
+  else counter = Math.max(v, counter);
+  syncCounterFloor();
+  markLoaded('counter'); schedulePaint();
+});
+
+function syncCounterFloor() {
+  const maxId = receipts.reduce((m, r) => Math.max(m, numId(r)), 0);
+  if (maxId >= counter) counter = maxId + 1;
+}
+
+function saveState() {}
+
+function toast(msg, err) {
+  const t = $('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.style.background = err ? '#ff375f' : '#30d158';
+  t.style.color = err ? '#fff' : '#000';
+  t.style.opacity = 1;
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.style.opacity = 0, 2600);
+}
+
+function showModal(id) { if ($(id)) $(id).classList.remove('hide'); }
+function hideModal(id) { if ($(id)) $(id).classList.add('hide'); }
+
+function refreshCaptcha() {
+  const n1 = Math.floor(Math.random() * 8) + 2;
+  const n2 = Math.floor(Math.random() * 8) + 1;
+  captchaSolution = n1 + n2;
+  if ($('captcha-question')) $('captcha-question').textContent = `${n1} + ${n2} =`;
+  if ($('captchaInp')) $('captchaInp').value = '';
+}
+
+function updateRoleUI() {
+  const badge = $('role-badge');
+  const btnLock = $('btn-admin-lock');
+  
+  if (badge) {
+    badge.textContent = isAdmin ? 'ADMIN MODE' : 'STUDENT VIEW';
+    badge.style.color = isAdmin ? 'var(--lime)' : 'var(--cyan)';
+    badge.style.borderColor = isAdmin ? 'rgba(214,255,63,.4)' : 'rgba(100,210,255,.3)';
+  }
+  
+  if (btnLock) {
+    btnLock.textContent = isAdmin ? '🔓 Lock Admin' : '🔑 Admin';
+  }
+
+  document.querySelectorAll('.admin-only').forEach(el => {
+    if (isAdmin) el.classList.remove('hide');
+    else el.classList.add('hide');
+  });
+
+  if (!isAdmin) {
+    const activeNav = document.querySelector('nav button.on');
+    if (activeNav && activeNav.dataset.t === 'collect') {
+      switchTab('students');
+    }
+  }
+}
+
+function toggleAdminLock() {
+  if (isAdmin) {
+    isAdmin = false;
+    sv('fees_app_is_admin', false);
+    updateRoleUI();
+    toast('Locked back to Student View');
+  } else {
+    promptAdminPin(() => {
+      isAdmin = true;
+      sv('fees_app_is_admin', true);
+      updateRoleUI();
+      toast('Admin Unlocked Successfully');
+    });
+  }
+}
+
+function promptAdminPin(callback) {
+  pendingPinCallback = callback;
+  if ($('pinInp')) $('pinInp').value = '';
+  refreshCaptcha();
+  checkLockoutStatus();
+  showModal('am');
+  setTimeout(() => { if ($('pinInp')) $('pinInp').focus(); }, 150);
+}
+
+function checkLockoutStatus() {
+  const lockoutUntil = ld('fees_app_lockout_until', 0);
+  const now = Date.now();
+  const box = $('lockout-warning-box');
+  const btn = $('btn-submit-pin');
+  const countdownText = $('attempt-countdown-text');
+
+  if (now < lockoutUntil) {
+    const remMinutes = Math.ceil((lockoutUntil - now) / 60000);
+    if (box) {
+      box.classList.remove('hide');
+      box.innerHTML = `🚨 <b>Phone Device Blocked</b><br>Too many failed security PIN attempts. Blocked for another <b>${remMinutes} minute(s)</b>.`;
+    }
+    if (btn) btn.disabled = true;
+    if (countdownText) countdownText.textContent = `Device locked out (${remMinutes}m remaining)`;
+    return true;
+  } else {
+    if (box) box.classList.add('hide');
+    if (btn) btn.disabled = false;
+    const fails = ld('fees_app_pin_fails', 0);
+    if (countdownText) countdownText.textContent = `${10 - fails} attempt(s) remaining`;
+    return false;
+  }
+}
+
+function submitAdminPin() {
+  if (checkLockoutStatus()) return;
+
+  const enteredCaptcha = +($('captchaInp') ? $('captchaInp').value : -1);
+  if (enteredCaptcha !== captchaSolution) {
+    toast('Captcha verification answer is incorrect!', 1);
+    refreshCaptcha();
+    return;
+  }
+
+  const enteredPin = ($('pinInp') ? $('pinInp').value : '').trim();
+  
+  if (enteredPin === SECRET_ADMIN_PIN) {
+    sv('fees_app_pin_fails', 0);
+    sv('fees_app_lockout_until', 0);
+    sv('fees_app_lockout_hrs', 1);
+
+    hideModal('am');
+    if ($('pinInp')) $('pinInp').value = '';
+    if (typeof pendingPinCallback === 'function') {
+      const cb = pendingPinCallback;
+      pendingPinCallback = null;
+      cb();
+    }
+  } else {
+    let fails = ld('fees_app_pin_fails', 0) + 1;
+    sv('fees_app_pin_fails', fails);
+    if ($('pinInp')) $('pinInp').value = '';
+    refreshCaptcha();
+
+    if (fails >= 10) {
+      const lockoutHours = ld('fees_app_lockout_hrs', 1);
+      const lockoutTime = Date.now() + (lockoutHours * 3600 * 1000);
+      sv('fees_app_lockout_until', lockoutTime);
+      sv('fees_app_lockout_hrs', lockoutHours + 1);
+      sv('fees_app_pin_fails', 0);
+
+      toast(`Device blocked for ${lockoutHours} hour(s) due to 10 failed attempts!`, 1);
+      checkLockoutStatus();
+    } else {
+      toast(`Incorrect PIN! (${10 - fails} attempts remaining)`, 1);
+      checkLockoutStatus();
+    }
+  }
+}
+
+function switchTab(name) {
+  if (name === 'collect' && !isAdmin) {
+    toast('Admin PIN required to collect fees', 1);
+    promptAdminPin(() => switchTab('collect'));
+    return;
+  }
+
+  ['collect', 'ledger', 'students'].forEach(t => {
+    if ($('v-' + t)) $('v-' + t).classList.toggle('hide', t !== name);
+  });
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === name));
+  if (name === 'students') renderRosterGrid();
+  if (name === 'ledger') renderLedger();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+window.paintApp = function() {
+  const p = activePlan();
+  let totalCollected = 0, fullClearedCount = 0, partialCount = 0;
+  
+  R.forEach(s => {
+    const paidAmount = paidTotalForStudent(s.sl);
+    totalCollected += paidAmount;
+    if (paidAmount >= p.target) fullClearedCount++;
+    else if (paidAmount > 0) partialCount++;
+  });
+  
+  const totalExpected = R.length * p.target;
+  const remainingTarget = Math.max(0, totalExpected - totalCollected);
+
+  if ($('hero-title')) $('hero-title').textContent = p.title;
+  if ($('hero-collected')) $('hero-collected').textContent = inr(totalCollected);
+  if ($('hero-remaining')) $('hero-remaining').textContent = inr(remainingTarget) + ' remaining to collect';
+  if ($('hero-bar')) $('hero-bar').style.width = Math.min(100, (totalCollected / totalExpected) * 100) + '%';
+  if ($('hero-cleared-count')) $('hero-cleared-count').textContent = `${fullClearedCount} of ${R.length} cleared`;
+  if ($('hero-breakdown-count')) $('hero-breakdown-count').textContent = `${partialCount} partial, ${R.length - fullClearedCount - partialCount} unpaid`;
+  if ($('next-rec-id')) $('next-rec-id').textContent = 'REC-' + counter;
+
+  if ($('plan-select')) {
+    $('plan-select').innerHTML = plans.map(x => `<option value="${esc(x.id)}"${x.id === p.id ? ' selected' : ''}>${esc(x.title)}</option>`).join('');
+  }
+
+  updateRoleUI();
+  renderStudentDropdownList();
+  renderLedger();
+  renderRosterGrid();
+  updatePaymentPreview();
+};
+
+function switchPlan(planId) {
+  activeId = planId;
+  localStorage.setItem('fees_app_active_plan', planId);
+  resetCollectForm();
+  paintApp();
+}
+
+function resetCollectForm() {
+  selectedSl = 0;
+  if ($('student-search-input')) $('student-search-input').value = '';
+  if ($('inp-phone')) $('inp-phone').value = '';
+  if ($('inp-cash')) $('inp-cash').value = 0;
+  if ($('inp-upi')) $('inp-upi').value = 0;
+  if ($('inp-ref')) $('inp-ref').value = '';
+  if ($('student-history-info')) $('student-history-info').classList.add('hide');
+  renderStudentDropdownList();
+  updatePaymentPreview();
+}
+
+function renderStudentDropdownList() {
+  const p = activePlan();
+  const queryText = $('student-search-input') ? $('student-search-input').value.toLowerCase().trim() : '';
+  const showCleared = $('chk-show-cleared') ? $('chk-show-cleared').checked : false;
+
+  const rows = R.filter(s => {
+    const due = p.target - paidTotalForStudent(s.sl);
+    return (due > 0 || showCleared) && (!queryText || s.name.toLowerCase().includes(queryText) || String(s.sl) === queryText);
+  });
+
+  if ($('student-dropdown-list')) {
+    $('student-dropdown-list').innerHTML = rows.map(s => {
+      const due = p.target - paidTotalForStudent(s.sl);
+      const isSelected = s.sl === selectedSl;
+      return `<button type="button" onclick="selectStudent(${s.sl})" class="w-full flex items-center justify-between gap-3 text-left px-4 py-3 text-sm cursor-pointer" style="border-bottom:1px solid var(--line);${isSelected ? 'background:#fff;color:#000' : ''}">
+        <span class="font-semibold truncate"><span class="font-mono text-xs opacity-60 mr-2">${pad(s.sl)}</span>${esc(s.name)}</span>
+        <span class="text-xs font-bold shrink-0" style="color:${isSelected ? '#000' : due > 0 ? 'var(--yellow)' : 'var(--green)'}">${due > 0 ? inr(due) : 'cleared'}</span>
+      </button>`;
+    }).join('') || '<div class="p-4 text-sm" style="color:var(--mut)">No matching students found.</div>';
+  }
+
+  renderSelectedStudentCard();
+}
+
+function renderSelectedStudentCard() {
+  const card = $('selected-student-card');
+  if (!card) return;
+  if (!selectedSl) { card.className = 'hide'; return; }
+
+  const s = R.find(x => x.sl === selectedSl);
+  const due = Math.max(0, activePlan().target - paidTotalForStudent(selectedSl));
+
+  card.className = 'mb-2 rounded-2xl p-4 flex items-center gap-3';
+  card.style.cssText = 'background:linear-gradient(135deg,rgba(10,132,255,.4),rgba(191,90,242,.4));border:1px solid rgba(255,255,255,.28)';
+  card.innerHTML = `<div class="w-10 h-10 rounded-full flex items-center justify-center font-black shrink-0" style="background:#fff;color:#000">${s.name[0]}</div>
+    <div class="min-w-0 flex-1">
+      <div class="font-extrabold truncate">${esc(s.name)}</div>
+      <div class="text-xs" style="color:rgba(255,255,255,.75)">SL #${pad(s.sl)} / ${due ? inr(due) + ' due' : 'fee cleared'}</div>
+    </div>
+    <button type="button" class="btn b-ghost !py-2 text-xs" onclick="clearSelectedStudent()">Change</button>`;
+}
+
+function clearSelectedStudent() {
+  selectedSl = 0;
+  if ($('inp-phone')) $('inp-phone').value = '';
+  if ($('inp-cash')) $('inp-cash').value = 0;
+  if ($('inp-upi')) $('inp-upi').value = 0;
+  if ($('inp-ref')) $('inp-ref').value = '';
+  if ($('student-history-info')) $('student-history-info').classList.add('hide');
+  renderStudentDropdownList();
+  updatePaymentPreview();
+}
+
+function selectStudent(sl) {
+  selectedSl = sl;
+  const p = activePlan();
+  const paidAmt = paidTotalForStudent(sl);
+  const rem = Math.max(0, p.target - paidAmt);
+
+  if ($('inp-phone')) $('inp-phone').value = phones[sl] || '';
+  if ($('inp-cash')) $('inp-cash').value = rem;
+  if ($('inp-upi')) $('inp-upi').value = 0;
+  if ($('inp-ref')) $('inp-ref').value = '';
+
+  const info = $('student-history-info');
+  if (info) {
+    if (paidAmt > 0) {
+      info.classList.remove('hide');
+      info.textContent = `Previously paid ${inr(paidAmt)} in ${validReceiptsForStudent(sl).length} installment(s). ${inr(rem)} remaining.`;
+    } else {
+      info.classList.add('hide');
+    }
+  }
+
+  renderStudentDropdownList();
+  updatePaymentPreview();
+}
+
+function quickFillPayment(type) {
+  if (!selectedSl) return toast('Select a student first', 1);
+  const rem = Math.max(0, activePlan().target - paidTotalForStudent(selectedSl));
+  if ($('inp-cash')) $('inp-cash').value = type === 'cash' ? rem : 0;
+  if ($('inp-upi')) $('inp-upi').value = type === 'upi' ? rem : 0;
+  updatePaymentPreview();
+}
+
+function updatePaymentPreview() {
+  const p = activePlan();
+  const sl = selectedSl;
+  const cash = +($('inp-cash') ? $('inp-cash').value : 0) || 0;
+  const upi = +($('inp-upi') ? $('inp-upi').value : 0) || 0;
+  const total = cash + upi;
+  const box = $('payment-preview-box');
+
+  if (!box) return;
+  if (!sl) { box.innerHTML = '<span style="color:var(--mut)">Select a student to calculate payment.</span>'; return; }
+
+  const remaining = p.target - (paidTotalForStudent(sl) + total);
+  let statusText, colorStyle;
+
+  if (total <= 0) {
+    statusText = 'Enter an amount to collect.'; colorStyle = 'var(--mut)';
+  } else if (remaining > 0) {
+    statusText = `${inr(remaining)} will still be due after this payment.`; colorStyle = 'var(--yellow)';
+  } else if (remaining === 0) {
+    statusText = 'This clears the fee plan in full!'; colorStyle = 'var(--green)';
+  } else {
+    statusText = `${inr(-remaining)} extra payment over required plan target.`; colorStyle = 'var(--cyan)';
+  }
+
+  box.innerHTML = `<div class="flex justify-between"><span style="color:var(--mut)">Paying Now</span><b class="font-mono text-base">${inr(total)}</b></div>
+    <div class="mt-1 font-bold text-xs" style="color:${colorStyle}">${statusText}</div>`;
+}
+
+function generateSecurityKey(id, sl, name, total, dateStr) {
+  let h = 0;
+  const raw = `${id}-${sl}-${name}-${total}-${dateStr}-FEES_SECRET_SALT`;
+  for (let i = 0; i < raw.length; i++) { h = ((h << 5) - h) + raw.charCodeAt(i); h |= 0; }
+  return 'SEC-' + Math.abs(h).toString(16).toUpperCase().padStart(8, '0');
+}
+
+function handleFormPreview(e) {
+  if (e) e.preventDefault();
+
+  if (!isAdmin) {
+    toast('Admin authentication required', 1);
+    promptAdminPin(() => handleFormPreview(e));
+    return;
+  }
+
+  if (!selectedSl) {
+    const q = $('student-search-input') ? $('student-search-input').value.toLowerCase().trim() : '';
+    const p = activePlan();
+    const showCleared = $('chk-show-cleared') ? $('chk-show-cleared').checked : false;
+    const matches = R.filter(s => {
+      const due = p.target - paidTotalForStudent(s.sl);
+      return (due > 0 || showCleared) && (!q || s.name.toLowerCase().includes(q) || String(s.sl) === q);
+    });
+    if (matches.length > 0) selectStudent(matches[0].sl);
+  }
+
+  const p = activePlan();
+  const sl = selectedSl;
+  const s = R.find(x => x.sl === sl);
+  if (!s) return toast('Please select a student', 1);
+
+  const cash = +($('inp-cash') ? $('inp-cash').value : 0) || 0;
+  const upi = +($('inp-upi') ? $('inp-upi').value : 0) || 0;
+  const total = cash + upi;
+  if (cash < 0 || upi < 0 || total <= 0) return toast('Enter a valid collection amount', 1);
+
+  const phone = ($('inp-phone') ? $('inp-phone').value : '').replace(/\D/g, '');
+  if (phone && (phone.length < 10 || phone.length > 13)) return toast('Check the phone number format', 1);
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const recId = 'REC-' + counter;
+
+  draftReceipt = {
+    id: recId,
+    planId: p.id,
+    planTitle: p.title,
+    planTarget: p.target,
+    sl,
+    studentName: s.name,
+    phone: phone || phones[sl] || '',
+    date: dateStr,
+    timestamp: timeStr,
+    cash,
+    upi,
+    upiId: ($('inp-ref') ? $('inp-ref').value.trim() : '') || 'N/A',
+    total,
+    collector: p.officer,
+    secKey: generateSecurityKey(recId, sl, s.name, total, dateStr + ' ' + timeStr),
+    status: 'VALID'
+  };
+
+  renderReceiptModal(draftReceipt, true);
+}
+
+function requestPinToConfirmIssue() {
+  if (!draftReceipt) return;
+  promptAdminPin(() => {
+    confirmAndIssueReceipt();
+  });
+}
+
+async function confirmAndIssueReceipt() {
+  if (!draftReceipt) return;
+  if (!online) return toast('No internet - cannot save receipt', 1);
+  const r = draftReceipt;
+  draftReceipt = null;
+
+  try {
+    // Claim the next receipt number atomically so two admins never get the same one
+    const tx = await F.child('counter').transaction(c => Math.max(c == null ? 0 : c, counter) + 1);
+    const claimed = tx.snapshot.val() - 1;
+    if ('REC-' + claimed !== r.id) {
+      r.id = 'REC-' + claimed;
+      r.secKey = generateSecurityKey(r.id, r.sl, r.studentName, r.total, r.date + ' ' + r.timestamp);
+    }
+    await F.child('receipts/' + r.id).set(r);
+    if (r.phone) F.child('phones/p' + r.sl).set(r.phone);
+  } catch (e) {
+    draftReceipt = r;
+    return toast('Could not save receipt. Try again.', 1);
+  }
+
+  resetCollectForm();
+  paintApp();
+  toast(r.id + ' issued successfully!');
+  renderReceiptModal(r, false);
+}
+
+function cancelPreview() {
+  draftReceipt = null;
+  hideModal('rm');
+}
+
+function renderRosterGrid() {
+  const p = activePlan();
+  const queryText = $('roster-search') ? $('roster-search').value.toLowerCase().trim() : '';
+  let html = '';
+
+  R.forEach(s => {
+    const paidAmt = paidTotalForStudent(s.sl);
+    const status = paidAmt >= p.target ? 'PAID' : paidAmt > 0 ? 'PARTIAL' : 'UNPAID';
+    
+    if ((rosterFilter !== 'ALL' && rosterFilter !== status) || (queryText && !s.name.toLowerCase().includes(queryText) && String(s.sl) !== queryText)) return;
+    
+    const remaining = Math.max(0, p.target - paidAmt);
+    const validReceipts = validReceiptsForStudent(s.sl);
+
+    html += `<div class="card p-4 space-y-3">
+      <div class="flex items-start justify-between gap-2">
+        <div class="min-w-0">
+          <div class="font-bold truncate">${esc(s.name)}</div>
+          <div class="text-xs" style="color:var(--mut)">SL #${pad(s.sl)}</div>
+        </div>
+        <span class="chip" style="color:${COLOR_MAP[status]}">${status}</span>
+      </div>
+      
+      <div>
+        <div class="flex justify-between text-xs font-semibold mb-1.5">
+          <span>${inr(paidAmt)} paid</span>
+          <span style="color:var(--mut)">${remaining ? inr(remaining) + ' left' : 'cleared'}</span>
+        </div>
+        <div class="h-1.5 rounded-full overflow-hidden" style="background:rgba(255,255,255,.1)">
+          <div class="h-1.5 rounded-full" style="width:${Math.min(100, (paidAmt / p.target) * 100)}%;background:linear-gradient(90deg,#0a84ff,#bf5af2,#ff375f)"></div>
+        </div>
+      </div>
+
+      <div class="flex gap-2">
+        ${validReceipts.length > 0 
+          ? `<button type="button" class="btn b-ghost !py-2 flex-1 text-xs" onclick="viewReceipt('${validReceipts[0].id}')">View Invoice</button>` 
+          : `<span class="text-[11px] py-2 flex-1 text-center" style="color:var(--mut)">No payment yet</span>`}
+        ${isAdmin ? `<button type="button" class="btn b-main !py-2 flex-1 text-xs" onclick="adminCollectForStudent(${s.sl})">Collect</button>` : ''}
+      </div>
+    </div>`;
+  });
+
+  if ($('roster-grid')) {
+    $('roster-grid').innerHTML = html || '<div class="col-span-full text-center py-14 text-sm" style="color:var(--mut)">No matching students found.</div>';
+  }
+}
+
+function filterRoster(filterType, btnEl) {
+  rosterFilter = filterType;
+  document.querySelectorAll('.fl').forEach(x => x.classList.toggle('on', x === btnEl));
+  renderRosterGrid();
+}
+
+function adminCollectForStudent(sl) {
+  if (!isAdmin) {
+    toast('Admin login required', 1);
+    promptAdminPin(() => adminCollectForStudent(sl));
+    return;
+  }
+  switchTab('collect');
+  if ($('student-search-input')) $('student-search-input').value = '';
+  if ($('chk-show-cleared')) $('chk-show-cleared').checked = paidTotalForStudent(sl) >= activePlan().target;
+  selectStudent(sl);
+}
+
+function renderLedger() {
+  const p = activePlan();
+  const queryText = $('ledger-search') ? $('ledger-search').value.toLowerCase().trim() : '';
+  const list = receipts.filter(r => r.planId === p.id && (!queryText || r.studentName.toLowerCase().includes(queryText) || r.id.toLowerCase().includes(queryText) || String(r.sl) === queryText));
+
+  if ($('ledger-list')) {
+    $('ledger-list').innerHTML = list.map(r => {
+      const isVoid = r.status === 'VOID';
+      const statusKey = getReceiptStatus(r);
+      const c = calcReceiptInstallment(r);
+
+      return `<div class="card p-4 ${isVoid ? 'opacity-50' : ''}">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="font-bold truncate ${isVoid ? 'line-through' : ''}">${esc(r.studentName)}</div>
+            <div class="text-xs mt-0.5" style="color:var(--mut)">${r.id} / SL #${pad(r.sl)} / Payment #${c.inst} / ${r.date}</div>
+          </div>
+          <div class="text-right shrink-0">
+            <div class="font-black text-lg font-mono ${isVoid ? 'line-through' : ''}">${inr(r.total)}</div>
+            <span class="chip" style="color:${COLOR_MAP[statusKey]}">${statusKey}</span>
+          </div>
+        </div>
+        <div class="flex gap-2 mt-3">
+          <button type="button" class="btn b-ghost !py-2 flex-1 text-xs" onclick="viewReceipt('${r.id}')">View Slip</button>
+          ${r.phone ? `<button type="button" class="btn b-ghost !py-2 flex-1 text-xs" onclick="sendWhatsAppMsg('${r.id}')">WhatsApp</button>` : ''}
+          ${isAdmin ? `<button type="button" class="btn b-ghost !py-2 flex-1 text-xs" style="color:${isVoid ? 'var(--green)' : 'var(--pink)'}" onclick="toggleVoidReceipt('${r.id}')">${isVoid ? 'Restore' : 'Void'}</button>` : ''}
+        </div>
+      </div>`;
+    }).join('') || '<div class="text-center py-14 text-sm" style="color:var(--mut)">No receipts recorded yet in ledger.</div>';
+  }
+}
+
+function toggleVoidReceipt(id) {
+  if (!isAdmin) {
+    toast('Admin authentication required', 1);
+    promptAdminPin(() => toggleVoidReceipt(id));
+    return;
+  }
+  const r = receipts.find(x => x.id === id);
+  if (!r) return;
+  const next = r.status === 'VALID' ? 'VOID' : 'VALID';
+  F.child('receipts/' + id + '/status').set(next).catch(() => toast('Could not update. Check connection.', 1));
+  toast(`${id} ${next === 'VOID' ? 'voided' : 'restored'}`);
+}
+
+function formatWhatsAppPhone(phone) {
+  if (!phone) return '';
+  let clean = String(phone).replace(/\D/g, '').replace(/^0+/, '');
+  if (clean.length === 10) clean = '91' + clean;
+  return clean;
+}
+
+function openWhatsAppChat(phone, text) {
+  const num = formatWhatsAppPhone(phone);
+  const url = num ? `https://wa.me/${num}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
+  window.location.href = url;
+}
+
+const getReceiptShareText = r => `OFFICIAL FEE RECEIPT: ${r.id}\nStudent: ${r.studentName} (SL #${pad(r.sl)})\nPlan: ${r.planTitle}\nAmount Paid: ${inr(r.total)}\nDate: ${r.date}\nSec Key: ${r.secKey}`;
+
+function sendWhatsAppMsg(id) {
+  const r = receipts.find(x => x.id === id);
+  if (r) openWhatsAppChat(r.phone, getReceiptShareText(r));
+}
+
+function shareWhatsApp() {
+  const r = receipts.find(x => x.id === curReceiptId);
+  if (!r) return;
+  if (!preparedBlob) {
+    toast('Preparing receipt image...', 1);
+    return;
+  }
+  downloadBlob(preparedBlob, `Receipt_${r.id}_${r.studentName.replace(/\s+/g, '_')}.png`);
+  toast('Image saved! Opening WhatsApp...');
+  openWhatsAppChat(r.phone, getReceiptShareText(r));
+}
+
+function renderQRCode(containerEl, payloadText) {
+  if (!containerEl) return;
+  containerEl.innerHTML = '';
+  try {
+    new QRCode(containerEl, {
+      text: payloadText,
+      width: 100,
+      height: 100,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+    // Hide duplicate image generated by qrcode.js
+    const img = containerEl.querySelector('img');
+    if (img) img.style.display = 'none';
+  } catch(e) {
+    containerEl.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(payloadText)}`;
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.objectFit = 'contain';
+    img.style.display = 'block';
+    containerEl.appendChild(img);
+  }
+}
+
+function viewReceipt(id) {
+  const r = receipts.find(x => x.id === id);
+  if (r) renderReceiptModal(r, false);
+}
+
+function renderReceiptModal(r, isPreviewMode) {
+  curReceiptId = isPreviewMode ? null : r.id;
+  preparedBlob = null;
+
+  if ($('preview-mode-banner')) $('preview-mode-banner').classList.toggle('hide', !isPreviewMode);
+  if ($('actPrev')) $('actPrev').classList.toggle('hide', !isPreviewMode);
+  if ($('actDone')) $('actDone').classList.toggle('hide', isPreviewMode);
+
+  const c = calcReceiptInstallment(r);
+  const statusKey = getReceiptStatus(r);
+  const setTxt = (id, val) => { if ($(id)) $(id).textContent = val; };
+
+  setTxt('mP', r.planTitle);
+  setTxt('mI', r.id);
+  setTxt('mD', `${r.date}, ${r.timestamp}`);
+  setTxt('mN', r.studentName);
+  setTxt('mS', 'SL #' + pad(r.sl));
+  setTxt('mPh', r.phone || 'N/A');
+  setTxt('mC', inr(r.cash));
+  setTxt('mU', inr(r.upi));
+  setTxt('mT', inr(r.total));
+  setTxt('mK', r.secKey);
+  setTxt('mO', 'issued by ' + r.collector);
+
+  const badgeConfig = {
+    FULL: ['PAID IN FULL', '#30d158'],
+    PARTIAL: ['DUE ' + inr(c.due), '#ffd60a'],
+    EXTRA: ['PAID +' + inr(c.extra) + ' EXTRA', '#64d2ff'],
+    VOID: ['VOIDED RECEIPT', '#ff375f']
+  }[statusKey] || ['PAID IN FULL', '#30d158'];
+
+  setTxt('mB', badgeConfig[0]);
+  if ($('mB')) {
+    $('mB').style.background = badgeConfig[1];
+    $('mB').style.transform = 'rotate(-6deg)';
+  }
+
+  setTxt('mG', `${inr(c.cum)} / ${inr(r.planTarget)}`);
+  if ($('mBar')) $('mBar').style.width = Math.min(100, Math.round((c.cum / r.planTarget) * 100)) + '%';
+
+  const isMultiPayment = c.inst > 1 || c.due > 0;
+  if ($('inst')) $('inst').classList.toggle('hide', !isMultiPayment);
+  if (isMultiPayment) {
+    setTxt('iI', '#' + c.inst);
+    setTxt('iP', inr(c.prev));
+    setTxt('iC', inr(c.cum));
+  }
+
+  const qrPayload = location.origin + location.pathname + '?id=' + encodeURIComponent(r.id) + '&k=' + encodeURIComponent(r.secKey);
+  renderQRCode($('qr'), qrPayload);
+
+  showModal('rm');
+  if ($('rm')) $('rm').scrollTop = 0;
+  if (!isPreviewMode) setTimeout(prepareReceiptCanvas, 350);
+}
+
+async function prepareReceiptCanvas() {
+  try {
+    const card = $('printable-receipt-card');
+    if (!card) return;
+    const canvas = await html2canvas(card, { scale: 2, backgroundColor: null, useCORS: true });
+    preparedBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+  } catch(e) {
+    preparedBlob = null;
+  }
+}
+
+function downloadBlob(blobObj, fileName) {
+  const url = URL.createObjectURL(blobObj);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function savePNGReceipt() {
+  const r = receipts.find(x => x.id === curReceiptId);
+  if (!r) return;
+  try {
+    const card = $('printable-receipt-card');
+    const canvas = await html2canvas(card, { scale: 3, backgroundColor: null, useCORS: true });
+    canvas.toBlob(b => {
+      downloadBlob(b, `Receipt_${r.id}_${r.studentName.replace(/\s+/g, '_')}.png`);
+      toast('Receipt image saved');
+    }, 'image/png');
+  } catch(e) {
+    toast('Could not generate image', 1);
+  }
+}
+
+function openScanQR() {
+  showModal('vm');
+  if (!camStream) toggleCamScanner();
+}
+
+function closeVerifyModal() {
+  stopCamScanner();
+  hideModal('vm');
+  if ($('vk')) $('vk').value = '';
+  if ($('vr')) $('vr').classList.add('hidden');
+}
+
+let animFrameId = null;
+
+function stopCamScanner() {
+  if (animFrameId) {
+    cancelAnimationFrame(animFrameId);
+    animFrameId = null;
+  }
+  try {
+    if (camStream) {
+      camStream.getTracks().forEach(t => t.stop());
+      camStream = null;
+    }
+  } catch(e) {}
+  const rdr = $('qr-reader');
+  if (rdr) {
+    rdr.classList.add('hidden');
+    rdr.innerHTML = '';
+  }
+  const btn = $('btn-cam');
+  if (btn) btn.innerHTML = 'Camera Scan';
+}
+
+async function toggleCamScanner() {
+  const rdr = $('qr-reader');
+  const btn = $('btn-cam');
+  if (!rdr) return;
+
+  if (camStream) { stopCamScanner(); return; }
+
+  try {
+    rdr.classList.remove('hidden');
+    rdr.innerHTML = '<video id="qr-video" class="w-full h-52 object-cover rounded-xl" autoplay playsinline muted></video><canvas id="qr-canvas" class="hidden"></canvas>';
+    const video = $('qr-video');
+
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    } catch(e1) {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    }
+
+    video.srcObject = camStream;
+    await video.play();
+    if (btn) btn.innerHTML = 'Stop Camera';
+
+    const scanFrame = () => {
+      if (!camStream) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA && video.videoWidth > 0 && video.videoHeight > 0) {
+        const canvas = $('qr-canvas');
+        if (canvas) {
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+          if (window.jsQR) {
+            const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+            if (code && code.data) {
+              if ($('vk')) {
+                $('vk').value = code.data;
+                lookupVerification();
+              }
+              toast('✓ QR Code Scanned!');
+              if (navigator.vibrate) navigator.vibrate(100);
+              stopCamScanner();
+              return;
+            }
+          }
+        }
+      }
+      animFrameId = requestAnimationFrame(scanFrame);
+    };
+    animFrameId = requestAnimationFrame(scanFrame);
+  } catch (err) {
+    toast('Camera unavailable or permission denied', 1);
+    stopCamScanner();
+  }
+}
+
+function scanQRFile(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  toast('Scanning photo...');
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = function() {
+      const maxDim = 1000;
+      let w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+        else { w = Math.round((w * maxDim) / h); h = maxDim; }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const imageData = ctx.getImageData(0, 0, w, h);
+
+      if (window.jsQR) {
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+        if (code && code.data) {
+          if ($('vk')) {
+            $('vk').value = code.data;
+            lookupVerification();
+          }
+          toast('✓ QR Extracted!');
+        } else {
+          toast('No QR code found in photo.', 1);
+        }
+      }
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function extractVerifyTerms(val) {
+  let id = '', key = '';
+  try { const u = new URL(val); id = u.searchParams.get('id') || ''; key = u.searchParams.get('k') || ''; } catch (e) {}
+  if (!id && !key) {
+    const m1 = val.match(/REC-\d+/i); if (m1) id = m1[0];
+    const m2 = val.match(/SEC-[0-9A-F]{8}/i); if (m2) key = m2[0];
+  }
+  return { id: id.toUpperCase(), key: key.toUpperCase() };
+}
+
+function lookupVerification() {
+  const val = ($('vk') ? $('vk').value : '').trim();
+  const res = $('vr');
+  if (!res) return;
+  if (!val) { res.classList.add('hidden'); return; }
+  res.classList.remove('hidden');
+
+  const okCls = "p-5 rounded-2xl text-xs space-y-3 border border-emerald-500/40 bg-emerald-950/40 text-emerald-100 backdrop-blur-md shadow-xl";
+  const badCls = "p-5 rounded-2xl text-xs space-y-3 border border-rose-500/60 bg-rose-950/50 text-rose-100 backdrop-blur-md shadow-xl";
+
+  if (!allLoaded()) {
+    res.className = okCls.replace(/emerald/g, 'amber');
+    res.innerHTML = '<div class="font-black text-amber-300 text-sm">Checking live ledger...</div>';
+    return;
+  }
+
+  const t = extractVerifyTerms(val);
+  const match = receipts.find(r =>
+    (t.id && r.id.toUpperCase() === t.id) || (!t.id && t.key && r.secKey.toUpperCase() === t.key));
+  const keyOk = match && (!t.key || match.secKey.toUpperCase() === t.key);
+
+  if (match && keyOk) {
+    const st = getReceiptStatus(match);
+    const voided = st === 'VOID';
+    res.className = voided ? badCls : okCls;
+    res.innerHTML = `
+      <div class="font-black text-sm ${voided ? 'text-rose-400' : 'text-emerald-400'}">${voided ? '⚠️ RECEIPT WAS VOIDED' : '✓ GENUINE RECEIPT VERIFIED'}</div>
+      <div class="font-extrabold text-sm text-white">${esc(match.studentName)} (SL #${pad(match.sl)})</div>
+      <div class="font-mono text-base font-black ${voided ? 'text-rose-300' : 'text-emerald-300'}">Paid: ${inr(match.total)}</div>
+      <div class="font-mono text-[11px]">${esc(match.id)} · ${esc(match.planTitle)}</div>
+      <div class="font-mono text-[11px]">Date: ${esc(match.date)}, ${esc(match.timestamp)}</div>
+      <div class="font-mono text-[11px]">Status: ${esc(st)}</div>`;
+  } else {
+    res.className = badCls;
+    res.innerHTML = `
+      <div class="font-black text-rose-400 text-sm">⚠️ FAKE / UNVERIFIED RECEIPT</div>
+      <div class="text-rose-200">This code does not match any receipt in the live ledger. Do not accept.</div>`;
+  }
+}
+
+function addNewStudent(e) {
+  if (e) e.preventDefault();
+  if (!isAdmin) return toast('Admin access required', 1);
+
+  const name = ($('sn') ? $('sn').value : '').trim().toUpperCase();
+  const sl = +($('sl-num') ? $('sl-num').value : 0);
+  if (!name || !(sl > 0)) return toast('Check student details', 1);
+
+  if (R.some(x => x.sl === sl)) return toast(`SL #${sl} already exists!`, 1);
+
+  F.child('students/s' + sl).set({ sl, name }).catch(() => toast('Could not save student', 1));
+  hideModal('sm');
+  if ($('sn')) $('sn').value = '';
+  if ($('sl-num')) $('sl-num').value = '';
+  paintApp();
+  toast(`Student ${name} added successfully`);
+}
+
+function createNewPlan(e) {
+  if (e) e.preventDefault();
+  if (!isAdmin) return toast('Admin access required', 1);
+
+  const title = ($('pt') ? $('pt').value : '').trim().toUpperCase();
+  const target = +($('pa') ? $('pa').value : 0);
+  if (!title || !(target > 0)) return toast('Check plan details', 1);
+
+  const newPlanObj = {
+    id: 'plan_' + Date.now(),
+    code: title.replace(/[^A-Z0-9]+/g, '_').slice(0, 16),
+    title,
+    target,
+    officer: ($('po') ? $('po').value.trim() : '') || 'Class Rep (Aben)'
+  };
+
+  F.child('plans/' + newPlanObj.id).set(newPlanObj).catch(() => toast('Could not save plan', 1));
+  plans.push(newPlanObj);
+  hideModal('pm');
+  if ($('pt')) $('pt').value = '';
+  switchPlan(newPlanObj.id);
+  toast('New plan created');
+}
+
+function exportCSV() {
+  if (!isAdmin) return toast('Admin access required', 1);
+  const p = activePlan();
+  const list = receipts.filter(r => r.planId === p.id);
+  if (!list.length) return toast('No receipts to export', 1);
+
+  const q = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  let csvContent = 'Receipt,Plan,SL,Student,Phone,Date,Time,Cash,UPI,Total,SecurityKey,Status\n';
+  list.forEach(r => {
+    csvContent += [q(r.id), q(p.code), r.sl, q(r.studentName), q(r.phone), q(r.date), q(r.timestamp), r.cash, r.upi, r.total, q(r.secKey), q(r.status)].join(',') + '\n';
+  });
+
+  downloadBlob(new Blob([csvContent], { type: 'text/csv' }), `FEES_${p.code}.csv`);
+  toast('CSV exported');
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  paintApp();
+  const q = new URLSearchParams(location.search);
+  if (q.get('id') || q.get('k')) {
+    showModal('vm');
+    if ($('vk')) $('vk').value = location.href;
+    lookupVerification();
+    history.replaceState(null, '', location.pathname);
+  }
+});
+paintApp();
+</script>
+</body>
+</html>
